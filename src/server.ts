@@ -3,16 +3,17 @@ import multer from 'multer';
 import { uploadToS3, getEmbeddingsFromS3, saveEmbeddingsToS3 } from './s3';
 import { generateEmbeddings, askBedrock } from './bedrock';
 import { chunkText, getTopKChunks } from './utils';
+import { getMessagesByConversationId, getOrCreateConversation, saveMessage } from './dynamodb';
 
 const app = express();
 const upload = multer();
 app.use(express.json());
 
-app.post('/upload-data/:service', upload.single('file'), async (req, res) => {
-  const { service } = req.params;
+app.post('/upload-data', upload.single('file'), async (req, res) => {
+  const { service } = req.body;
   const file = req.file;
-  if (!file) {
-    res.status(400).send('No file uploaded.');
+  if (!file || !service) {
+    res.status(400).send('Missing required fields.');
     return;
   }
 
@@ -21,26 +22,32 @@ app.post('/upload-data/:service', upload.single('file'), async (req, res) => {
   const embeddings = await generateEmbeddings(chunks);
 
   await uploadToS3(`${service}/source.txt`, text);
-  await saveEmbeddingsToS3(service, chunks.map((chunk, i) => ({ chunk, embedding: embeddings[i].embedding })));
+  await saveEmbeddingsToS3(`${service}`, chunks.map((chunk, i) => ({ chunk, embedding: embeddings[i].embedding })));
 
   res.send('File and embeddings uploaded successfully.');
 });
 
-app.post('/ask/:service', async (req, res) => {
-  const { service } = req.params;
-  const question = req.body?.question;
-  if (!question) {
-    res.status(400).send('Missing question.');
+app.post('/ask', async (req, res) => {
+  const { question, username, service } = req.body || {};
+  if (!question || !username || !service) {
+    res.status(400).send('Missing question, username or service.');
     return;
-  };
+  }
+
+  const chatId = await getOrCreateConversation(username, service);
+  const messages = await getMessagesByConversationId(chatId);
+  console.log('messages: ', messages)
 
   const questionEmbedding = await generateEmbeddings([question]);
-  const stored = await getEmbeddingsFromS3(service);
-
+  const stored = await getEmbeddingsFromS3(`${service}`);
   const topChunks = getTopKChunks(questionEmbedding[0].embedding, stored, 3);
   const context = topChunks.map(c => c.chunk).join('\n');
+  console.log('context: ', context)
 
-  const answer = await askBedrock(question, context);
+  const answer = await askBedrock({ messages, context });
+  await saveMessage(chatId, { role: 'user', text: question });
+  await saveMessage(chatId, { role: 'assistant', text: answer });
+
   res.json({ answer });
 });
 

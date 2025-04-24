@@ -1,11 +1,12 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
+import { ACCESS_KEY_ID, SECRET_ACCESS_KEY } from './config/environment';
 
 const s3 = new S3Client({
   region: 'us-east-1',
   credentials: {
-    accessKeyId: '',
-    secretAccessKey: ''
+    accessKeyId: ACCESS_KEY_ID,
+    secretAccessKey: SECRET_ACCESS_KEY
   }
 });
 const BUCKET_NAME = 'cpa-test-1';

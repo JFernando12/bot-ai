@@ -1,10 +1,11 @@
 import { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } from '@aws-sdk/client-bedrock-runtime';
+import { ACCESS_KEY_ID, SECRET_ACCESS_KEY } from './config/environment';
 
 const bedrock = new BedrockRuntimeClient({
   region: 'us-east-1',
   credentials: {
-    accessKeyId: '',
-    secretAccessKey: ''
+    accessKeyId: ACCESS_KEY_ID,
+    secretAccessKey: SECRET_ACCESS_KEY
   }
 });
 
@@ -26,7 +27,8 @@ export async function generateEmbeddings(texts: string[]): Promise<{ embedding: 
   return responses;
 }
 
-export async function askBedrock(question: string, context: string): Promise<string> {
+export async function askBedrock({ context, messages }: { context: string, messages: { role: 'user' | 'assistant', text: string }[] }): Promise<string> {
+  const messagesFormatted = messages.map(message => ({ role: message.role, content: [{ text: message.text }] }))
   const command = new ConverseCommand({
     modelId: 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
     system: [
@@ -37,12 +39,7 @@ export async function askBedrock(question: string, context: string): Promise<str
         Utiliza el contexto de abajo.\n\nContexto:\n${context}`
       }
     ],
-    messages: [
-      {
-        role: 'user',
-        content: [{ text: `${question}` }],
-      },
-    ],
+    messages: messagesFormatted,
   });
   const response = await bedrock.send(command);
   const content = response.output?.message?.content;
