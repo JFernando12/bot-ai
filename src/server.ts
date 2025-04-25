@@ -9,8 +9,8 @@ const app = express();
 const upload = multer();
 app.use(express.json());
 
-app.post('/upload-data', upload.single('file'), async (req, res) => {
-  const { service } = req.body;
+app.post('/cargar-datos', upload.single('archivo'), async (req, res) => {
+  const service = req.body?.servicio;
   const file = req.file;
   if (!file || !service) {
     res.status(400).send('Missing required fields.');
@@ -27,15 +27,19 @@ app.post('/upload-data', upload.single('file'), async (req, res) => {
   res.send('File and embeddings uploaded successfully.');
 });
 
-app.post('/ask', async (req, res) => {
-  const { question, username, service } = req.body || {};
+app.post('/conversar', async (req, res) => {
+  const question = req.body?.pregunta;
+  const username = req.body?.usuario;
+  const service = req.body?.servicio;
   if (!question || !username || !service) {
     res.status(400).send('Missing question, username or service.');
     return;
   }
 
+  const userMessage: { role: 'user', text: string } = { role: 'user', text: question }
   const chatId = await getOrCreateConversation(username, service);
   const messages = await getMessagesByConversationId(chatId);
+  messages.push(userMessage);
   console.log('messages: ', messages)
 
   const questionEmbedding = await generateEmbeddings([question]);
@@ -45,8 +49,9 @@ app.post('/ask', async (req, res) => {
   console.log('context: ', context)
 
   const answer = await askBedrock({ messages, context });
-  await saveMessage(chatId, { role: 'user', text: question });
-  await saveMessage(chatId, { role: 'assistant', text: answer });
+  const assistantMessage: { role: 'assistant', text: string } = { role: 'assistant', text: answer }
+  await saveMessage(chatId, userMessage);
+  await saveMessage(chatId, assistantMessage);
 
   res.json({ answer });
 });
